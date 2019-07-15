@@ -12,7 +12,7 @@ next_state = transpose([1 2 2 3 4 5 6 8 9 10 11 12;
                         8 8 8 8 8 8 8 9 10 11 12 7]);
 
 ## 12 elements with reward for each state
-Rs = 100*[1 1 2 3 4 5 6 0 0 0 0 0];
+Rs = [0 1 2 3 4 5 6 0 0 0 0 0];
 
 # relative value iteration
 V_pi = zeros(12)
@@ -20,6 +20,18 @@ V_pi = zeros(12)
 sp1 = 100;
 iter = 0;
 policy = zeros(12);
+
+
+#### polcy evaluation
+for i = 2:4
+    X_mtx[i,i] = 1; X_mtx[i,1] = 1; X_mtx[i,next_state[i]] = -1;
+    b[i] = Rs[next_state[i]];
+end
+X_mtx[1,1] = 1; X_mtx[1,next_state[1]] = -1; b[1] = Rs[next_state[1]];
+V = inv(X_mtx)*b
+
+rho_pi = V[1];
+V_pi
 
 while sp1 > .001
     global iter += 1

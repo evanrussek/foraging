@@ -103,7 +103,7 @@ end
 
 
 # solve this for different
-for ...
+#for ...
     data = [data; solve_policy(start_reward,decrement,n_travel_states)]
 end
 
