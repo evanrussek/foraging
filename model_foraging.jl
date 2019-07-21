@@ -8,19 +8,46 @@ using Gadfly
 
 n_states = 12;
 
-next_state = transpose([1 2 2 3 4 5 6 8 9 10 11 12;
+next_state = transpose([1 1 2 3 4 5 6 8 9 10 11 12;
                         8 8 8 8 8 8 8 9 10 11 12 7]);
 
 ## 12 elements with reward for each state
-Rs = [0 1 2 3 4 5 6 0 0 0 0 0];
+R = [0 1 2 3 4 5 6 0 0 0 0 0];
 
 # relative value iteration
 V_pi = zeros(12)
 #last_V_pi = copy(V_pi)
 sp1 = 100;
 iter = 0;
-policy = zeros(12);
 
+policy = [.95 .95 .95 .95 .95 .95 .95 .95 .95 .95 .95 .95;
+        .05 .05 .05 .05 .05 .05 .05 .05 .05 .05 .05 .05]'
+
+
+#function evaluate_policy(policy,R,next_state)
+
+    T = zeros(12,12)
+
+    for i = 1:n_states
+        for p = 1:2
+            T[i,next_state[i,p]] = policy[i,p];
+            T[i,7] += .01
+        end
+    end
+
+    start_dist = ones(n_states)./n_states;
+
+    std_mtx = T^1000;
+
+    steady_state_dist = transpose(std_mtx)*start_dist; # normally wind up in 1, unless elsewhere
+    rho_pi = Rs*steady_state_dist;
+
+    I_mtx = Matrix{Int64}(I,12,12);
+
+    part_I = I_mtx[:,1:11]
+
+    V = inv(I_mtx - T)*(Rs .- rho_pi)'
+#end
 
 #### polcy evaluation
 for i = 2:4
