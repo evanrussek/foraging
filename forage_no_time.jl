@@ -3,14 +3,16 @@
 
 # this works
 
+cd("C:\\Users\\erussek\\foraging")
+
 using Gadfly
 using DataFrames
 using Distances
 using DataFramesMeta
 using CategoricalArrays
+include("./forage_utils.jl")
 
-
-function solve_policy(start_reward, decrement, n_travel_states)
+function build_det_MDP(start_reward, decrement, n_travel_states)
     Rtree = [start_reward];
 
     reward = copy(start_reward)
@@ -40,6 +42,13 @@ function solve_policy(start_reward, decrement, n_travel_states)
     end
     next_state[n_states,2] = n_tree_states;
 
+    return Rs, next_state
+
+end
+
+function solve_policy(Rs, next_state)
+
+    n_states = length(Rs)
     # run value iteration
     V_pi = zeros(n_states)
     sp1 = 100;
@@ -63,14 +72,22 @@ function solve_policy(start_reward, decrement, n_travel_states)
         sp1 = spannorm_dist(V_pi, last_V_pi)
     end
 
+    return V_pi, policy
+
+end
+
+function sim_forage_dp(start_reward, decrement, n_travel_states)
+    Rs, next_state = build_det_MDP(start_reward,decrement,n_travel_states)
+    V_pi, policy = solve_policy(Rs, next_state)
     #return policy, Rs
+    n_states = length(Rs);
     res_df = DataFrame(state=1:n_states, pol = policy, R = Rs,
                 n_travel = n_travel_states*ones(n_states),
                 start_R = start_reward*ones(n_states),
-                decrement = decrement*ones(n_states));
+                decrement = decrement*ones(n_states), V = V_pi);
     return res_df
-
 end
+
 
 data = DataFrame();
 
@@ -78,7 +95,7 @@ data = DataFrame();
 for start_reward = [10. 15. 20.]
     for decrement = [.9]
         for n_travel_states = [5 10 20]
-            global data = [data; solve_policy(start_reward,decrement,n_travel_states)]
+            global data = [data; sim_forage_dp(start_reward,decrement,n_travel_states)]
         end
     end
 end
@@ -117,4 +134,7 @@ fig1b = plot(data_part, x=:R, y=:pol,
 
 myplot = vstack(fig1a,fig1b)
 
-draw(PDF("plots/optimal_no_time.pdf", 10inch, 10inch), myplot)
+
+import Cairo
+import Fontconfig
+draw(PDF("plots/optimal_no_time.pdf", 8inch, 12inch), myplot)
