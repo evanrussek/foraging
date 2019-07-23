@@ -16,11 +16,12 @@ function build_det_MDP(start_reward, decrement, n_travel_states)
     reward = copy(start_reward)
     # figure our how many tree states we need
     current_reward = Float64(start_reward);
-    while current_reward > .5
+    while current_reward > .1
         next_reward = current_reward*decrement
         prepend!(Rtree,next_reward)
         current_reward = next_reward
     end
+    prepend!(Rtree,0) # let it end at 0 rewards
     n_tree_states = length(Rtree);
     n_states = n_tree_states + n_travel_states;
 
@@ -60,7 +61,7 @@ draw(PDF("plots/time_cost_plot.pdf", 8inch, 8inch), time_cost_plot)
 function evaluate_policy(Rs, next_state,vigor_cost, policy, lag)
 
     n_states = length(Rs);
-    ref_state = n_states - 1;
+    ref_state = 10;
     all_states = Array(1:n_states);
     all_states_not_ref = filter!(x-> x!=ref_state , all_states);
 
@@ -116,7 +117,7 @@ function improve_policy(V_pi, rho_pi, Rs, next_state, vigor_cost)
         policy[i] = argmax([Q1 Q2])[2]
     end
 
-    println("imp_pol: ", policy[1:25])
+    #println("imp_pol: ", policy[1:25])
 
     if (rho_pi > 0)
         lag = sqrt(vigor_cost/rho_pi)
@@ -147,14 +148,14 @@ function solve_policy(Rs, next_state, vigor_cost)
         V_pi, rho_pi = evaluate_policy(Rs, next_state,vigor_cost, policy, lag)
         #print(V_pi)
         policy, lag = improve_policy(V_pi, rho_pi, Rs, next_state, vigor_cost)
-        println("solve_pol: ", policy[1:25])
+        #println("solve_pol: ", policy[1:25])
         max_pol_change = maximum(abs.(policy - old_policy))
         #println(max_pol_change)
         lag_change = abs(lag - old_lag)
         max_change = maximum([max_pol_change lag_change])
     end
+    println("pot_pol: ", policy[40:51])
     return policy, lag, V_pi, rho_pi
-    println("pot_pol: ", policy[1:25])
 end
 
 function sim_forage_pi(start_reward, decrement, n_travel_states, vigor_cost)
@@ -176,11 +177,9 @@ function sim_forage_pi(start_reward, decrement, n_travel_states, vigor_cost)
     return res_df
 end
 
+#data = sim_forage_pi(10.,.9,10, 2)
 
-data = sim_forage_pi(10.,.9,10, 2)
-
-plot(data, y = :pol, x = :next_R)
-
+#plot(data, y = :pol, x = :next_R)
 
 data = DataFrame();
 
@@ -188,21 +187,21 @@ data = DataFrame();
 for start_reward = [10. 15. 20.]
     for decrement = [.9]
         for n_travel_states = [5 10 20]
-            for vigor_cost = [0.2 10. 100.]
+            for vigor_cost = [2. 8. 14.]
                 global data = [data; sim_forage_pi(start_reward,decrement,n_travel_states, vigor_cost)]
             end
         end
     end
 end
 
-data = DataFrame();
+#data = DataFrame();
 
-for vigor_cost = [0.2 10. 100.]
-    global data = [data; sim_forage_pi(15.,.9,20, vigor_cost)]
-end
+#for vigor_cost = [0.2 10. 100.]#
+#    global data = [data; sim_forage_pi(15.,.9,20, vigor_cost)]
+#end
 
-data1 = sim_forage_pi(15.,.9,20, .5)
-data2 = sim_forage_pi(15.,.9,20, 20)
+#data1 = sim_forage_pi(15.,.9,20, .5)
+#data2 = sim_forage_pi(15.,.9,20, 20)
 
 # plot lag as a function of start reward, n_travel_states, vigor_cost
 # plot policy as a function of start_reward, n_travel states, vigor_cost
@@ -222,24 +221,68 @@ Gadfly.push_theme(:default)
 fig1a = plot(data_part, x=:next_R, y=:pol,
      Geom.subplot_grid(Geom.line ),
         color = :vigor_cost, xgroup=:start_R, ygroup = :n_travel,
-        Guide.ylabel("Policy"),
+        Guide.ylabel("N Travel States"),
         Guide.xlabel("Next R by Start R"),
-        Guide.colorkey(title = "N Travel States"),
-        style(line_width = 2pt)
+        Guide.colorkey(title = "Vigor Cost"),
+        style(line_width = 2pt),
+        Guide.title("Policy")
         )
+
+
 
 # plot the value we solved for row for each policy
 fig1b = plot(data_part, x=:start_R, y=:rho,
             Geom.subplot_grid(Geom.bar(position= :dodge)),
             color=:vigor_cost, ygroup = :n_travel,
-            Guide.ylabel("Rho"),
+            Guide.ylabel("N Travel States"),
             Guide.xlabel("Start R"),
-            Guide.colorkey(title = "vigor cost"))
+            Guide.colorkey(title = "vigor cost"),
+            Guide.title("Rho"))
 
 # plot the value we solved for row for each policy
 fig1c = plot(data_part, x=:start_R, y=:lag,
     Geom.subplot_grid(Geom.bar(position= :dodge)),
     color=:vigor_cost, ygroup = :n_travel,
-    Guide.ylabel("Lag"),
+    Guide.ylabel("N Travel States"),
     Guide.xlabel("Start R"),
-    Guide.colorkey(title = "vigor cost"))
+    Guide.colorkey(title = "vigor cost"),
+    Guide.title("Lag"))
+
+plot1 = vstack(fig1a, fig1c, fig1b)
+
+draw(PDF("plots/policy_iter_by_timecost.pdf", 7.5inch, 10inch), plot1)
+
+# change plot so that color is over N Travel States
+
+fig2a = plot(data_part, x=:next_R, y=:pol,
+     Geom.subplot_grid(Geom.line ),
+        color = :n_travel, xgroup=:start_R, ygroup = :vigor_cost,
+        Guide.ylabel("Vigor Cost"),
+        Guide.xlabel("Next R by Start R"),
+        Guide.colorkey(title = "N Travel States"),
+        style(line_width = 2pt),
+        Guide.title("State Value")
+        )
+
+        # plot the value we solved for row for each policy
+fig2c = plot(data_part, x=:start_R, y=:rho,
+                Geom.subplot_grid(Geom.bar(position= :dodge)),
+                color=:n_travel, ygroup = :vigor_cost,
+                Guide.ylabel("Vigor Cost"),
+                Guide.xlabel("Start R"),
+                Guide.colorkey(title = "N Travel States"),
+                Guide.title("Rho"))
+
+                # plot the value we solved for row for each policy
+fig2b = plot(data_part, x=:start_R, y=:lag,
+                        Geom.subplot_grid(Geom.bar(position= :dodge)),
+                        color=:n_travel, ygroup = :vigor_cost,
+                        Guide.ylabel("Vigor Cost"),
+                        Guide.xlabel("Start R"),
+                        Guide.colorkey(title = "N Travel States"),
+                        Guide.title("Lag"))
+
+plot2 = vstack(fig2b, fig2)
+
+
+draw(PNG("plots/lag2_by_n_travel.png", 7.5inch, 10inch), fig2b)
