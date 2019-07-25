@@ -202,7 +202,7 @@ fig1b = plot(data_part, x=:next_R, y=:pol,
     # plot the value we solved for row for each policy
     fig1c = plot(data_part, x=:start_R, y=:rho, color=:n_travel,
         Geom.bar(position= :dodge),
-        Guide.ylabel("Avg Reward Rate (Computed)"),
+        Guide.ylabel("Rho*"),
         Guide.xlabel("Start R"),
         Guide.colorkey(title = "N Travel States"),)
 

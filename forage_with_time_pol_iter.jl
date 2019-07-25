@@ -11,6 +11,7 @@ import Cairo
 import Fontconfig
 
 function build_det_MDP(start_reward, decrement, n_travel_states)
+    # takes in
     Rtree = [start_reward];
 
     reward = copy(start_reward)
@@ -68,7 +69,6 @@ function evaluate_policy(Rs, next_state,vigor_cost, policy, lag)
     # run value iteration
     V_pi = zeros(n_states);
     rho_pi = 0.;
-    sp1 = 100;
     iter = 0;
     other_choice = [2 1];
     max_val_change = 1000;
@@ -118,6 +118,8 @@ function improve_policy(V_pi, rho_pi, Rs, next_state, vigor_cost)
     end
 
     #println("imp_pol: ", policy[1:25])
+
+    # ideas - make vigor cost a function of state...
 
     if (rho_pi > 0)
         lag = sqrt(vigor_cost/rho_pi)
