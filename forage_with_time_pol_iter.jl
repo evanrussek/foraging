@@ -156,7 +156,7 @@ function solve_policy(Rs, next_state, vigor_cost)
         lag_change = abs(lag - old_lag)
         max_change = maximum([max_pol_change lag_change])
     end
-    println("pot_pol: ", policy[40:51])
+    #println("pot_pol: ", policy[40:51])
     return policy, lag, V_pi, rho_pi
 end
 
@@ -169,6 +169,11 @@ function sim_forage_pi(start_reward, decrement, n_travel_states, vigor_cost)
     next_R_stay = zeros(n_states);
     for i = 1:n_states
         next_R_stay[i] = Rs[next_state[i,1]];
+    end
+
+    next_TR_stay = zeros(n_states);
+    for i = 1:n_states
+        next_R_stay[i] = Rs[next_state[i,1]] - lag/vigor_cost;
     end
 
     res_df = DataFrame(state=1:n_states, pol = policy, lag = lag*ones(n_states),
