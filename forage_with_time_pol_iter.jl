@@ -173,12 +173,12 @@ function sim_forage_pi(start_reward, decrement, n_travel_states, vigor_cost)
 
     next_TR_stay = zeros(n_states);
     for i = 1:n_states
-        next_R_stay[i] = Rs[next_state[i,1]] - lag/vigor_cost;
+        next_TR_stay[i] = Rs[next_state[i,1]] - vigor_cost/lag;
     end
 
     res_df = DataFrame(state=1:n_states, pol = policy, lag = lag*ones(n_states),
                 R = Rs, n_travel = n_travel_states*ones(n_states),
-                start_R = start_reward*ones(n_states), next_R = next_R_stay,
+                start_R = start_reward*ones(n_states), next_R = next_R_stay, next_TR = next_TR_stay,
                 decrement = decrement*ones(n_states), V = V_pi, rho = rho_pi*ones(n_states),
                 vigor_cost = vigor_cost*ones(n_states));
     return res_df
@@ -225,7 +225,7 @@ data_part = @linq data |>
 
 Gadfly.push_theme(:default)
 
-fig1a = plot(data_part, x=:next_R, y=:pol,
+fig1a = plot(data_part, x=:next_R_stay, y=:pol,
      Geom.subplot_grid(Geom.line ),
         color = :vigor_cost, xgroup=:start_R, ygroup = :n_travel,
         Guide.ylabel("N Travel States"),
