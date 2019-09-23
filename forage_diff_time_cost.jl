@@ -226,7 +226,7 @@ function sim_forage_pi(start_reward, decrement, n_travel_states, vigor_cost)
     reward_thresh = Rs[next_state[first_leave_state,1]];
     predicted_thresh = reward_thresh/stay_lag - vigor_cost[1]/(stay_lag^2);
 
-    # get the exit threshole
+    # get the exit threshold
 
     res_df = DataFrame(state=1:n_states,tree_states = tree_states, travel_states = travel_states,
                 reward_thresh = ones(n_states)*reward_thresh, pred_thresh = ones(n_states)*predicted_thresh,
@@ -255,9 +255,9 @@ data = DataFrame();
 # it got stuck on 5, 10, 20
 
 # run this for different start rewards
-for start_reward = [10. 15. 20.]
-    for decrement = [.9]
-        for n_travel_states = [5 10 20]
+for start_reward = [100.]
+    for decrement = [.98]
+        for n_travel_states = [5 10 20 40]
             for vigor_cost1 = 1.
                 for vigor_cost2 = [1. 5. 20.]
                     println(start_reward, n_travel_states, vigor_cost2)
@@ -358,5 +358,5 @@ exit_thresh = plot(rho_sum, x = :start_R, y = :rew_thresh,
 
 exit_thresh_lag = vstack(lag_plot, exit_thresh)
 
-draw(PDF("plots/exit_thresh_lag.pdf", 8inch, 12inch), exit_thresh_lag)
-draw(PDF("plots/exit_thresh_lag_point.pdf", 8inch, 12inch), lag_vs_thresh_point)
+draw(PDF("plots/exit_thresh_lag2.pdf", 8inch, 12inch), exit_thresh_lag)
+draw(PDF("plots/exit_thresh_lag_point2.pdf", 8inch, 12inch), lag_vs_thresh_point)
