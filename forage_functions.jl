@@ -10,9 +10,17 @@ import Cairo
 import Fontconfig
 using Statistics
 
-# here, we'll have a button 1 vigor cost and a button 2 vigor cost
+# build the MDP (returns  S -> R and next-state mtx SXA -> S')
 
 function build_det_MDP(start_reward, decrement, n_travel_states)
+    # build the deterministic MDP
+    # takes in:
+    #          start_reward: doulble point value tree starts at,
+    #          decrement: double / tree decay rate with each press
+    #          n_travel_states: INT - number of states to transition through when traveling
+    # returns:
+    #        RS: (array) S -> R and  next_state: (matrix) S,A -> S')
+
     # takes in
     Rtree = [start_reward];
 
@@ -48,6 +56,7 @@ function build_det_MDP(start_reward, decrement, n_travel_states)
 
 end
 
+## plot the time cost
 function time_cost(lag, unit_cost)
     return unit_cost/lag
 end
@@ -62,6 +71,18 @@ draw(PDF("plots/time_cost_plot.pdf", 8inch, 8inch), time_cost_plot)
 
 
 function evaluate_policy(Rs, next_state, vigor_cost, policy, lag)
+    # function to evaluate a policy by setting ref state to 0
+    # evaluate each other state and reward rate w/r.t. to that
+    # Takes in:
+        # Rs: s -> r
+        # next_state: (s,a) -> s'
+        # vigor cost: a -> c (cost of a press per unit time)
+        # policy: array of INT s -> a
+        # lag: a -> lag (array) - current decision about how fast to transition for each action
+    # Returns:
+        # V_pi: state value s -> v
+        # rho: average reward rate
+        #
 
     n_states = length(Rs);
     ref_state = 15;
@@ -115,6 +136,7 @@ function evaluate_policy(Rs, next_state, vigor_cost, policy, lag)
 end
 
 function improve_policy(V_pi, rho_pi, Rs, next_state, vigor_cost)
+    # returns new policy and lag based on value of current policy/lag and average reward rate
     n_states = length(V_pi);
     policy = zeros(Int64,n_states);
     lag = ones(n_states);
@@ -145,21 +167,6 @@ function improve_policy(V_pi, rho_pi, Rs, next_state, vigor_cost)
 
     return policy, lag
 end
-
-Rs, next_state = build_det_MDP(15.,.9,20);
-vigor_cost = [2. 8.]
-
-iter = 0;
-n_states = length(Rs);
-policy = ones(Int64,n_states);
-lag = 500 .*ones(n_states);
-max_change = 100;
-max_pol_change = 100;
-V_pi = zeros(n_states)
-rho_pi = 0;
-V_pi, rho_pi = evaluate_policy(Rs, next_state,vigor_cost, policy, lag)
-
-policy, lag = improve_policy(V_pi, rho_pi, Rs, next_state, vigor_cost)
 
 # policy iteration
 function solve_policy(Rs, next_state, vigor_cost)
@@ -207,7 +214,6 @@ function sim_forage_pi(start_reward, decrement, n_travel_states, vigor_cost)
 
     #print(stay_lag)
 
-
     next_TR_stay = zeros(n_states);
     for i = 1:n_states
         next_TR_stay[i] = Rs[next_state[i,1]]/stay_lag - vigor_cost[1]/(stay_lag^2);
@@ -237,126 +243,3 @@ function sim_forage_pi(start_reward, decrement, n_travel_states, vigor_cost)
                 vigor_cost1 = vigor_cost[1]*ones(n_states), vigor_cost2 = vigor_cost[2]*ones(n_states));
     return res_df
 end
-
-data1 = sim_forage_pi(15.,.9,20, [2. 8.])
-
-tree_states = data1[:tree_states]
-pol = data1[:pol]
-tree_pol = pol[tree_states .== 1]
-# want first highest # state with policy = 2
-first_leave_state = maximum(findall(tree_pol .== 2))
-next_state = data1[:next_states]
-# get the reward in teh state after this
-
-#plot(data, y = :pol, x = :next_R)
-
-data = DataFrame();
-
-# it got stuck on 5, 10, 20
-
-# run this for different start rewards
-for start_reward = [100.]
-    for decrement = [.98]
-        for n_travel_states = [5 10 20 40]
-            for vigor_cost1 = 1.
-                for vigor_cost2 = [1. 5. 20.]
-                    println(start_reward, n_travel_states, vigor_cost2)
-                    global data = [data; sim_forage_pi(start_reward,decrement,
-                            n_travel_states, [vigor_cost1, vigor_cost2])]
-                end
-            end
-        end
-    end
-end
-
-#data = DataFrame();
-
-#for vigor_cost = [0.2 10. 100.]#
-#    global data = [data; sim_forage_pi(15.,.9,20, vigor_cost)]
-#end
-
-#data1 = sim_forage_pi(15.,.9,20, .5)
-#data2 = sim_forage_pi(15.,.9,20, 20)
-
-# plot lag as a function of start reward, n_travel_states, vigor_cost
-# plot policy as a function of start_reward, n_travel states, vigor_cost
-#
-
-# want to make a plot
-data_part = @linq data |>
-           transform(decrement = CategoricalArray(:decrement),
-                    start_R = CategoricalArray(:start_R),
-                    n_travel = CategoricalArray(:n_travel),
-                    vigor_cost2 = CategoricalArray(:vigor_cost2),
-                    pol = CategoricalArray(:pol),
-                    tree_states = CategoricalArray(:tree_states))
-
-data_tree = @linq data_part |>
-                    where(:tree_states .== 1)
-
-
-
-Gadfly.push_theme(:default)
-
-
-pol_plot = plot(data_tree, x=:next_TR, y=:pol,
-     Geom.subplot_grid(Geom.line ),
-        color = :vigor_cost2, xgroup=:start_R, ygroup = :n_travel,
-        Guide.ylabel("N Travel States"),
-        Guide.xlabel("Next R by Start R"),
-        Guide.colorkey(title = "Vigor Cost"),
-        style(line_width = 2pt),
-        Guide.title("Policy")
-        )
-
-
-
-lag_sum = @linq data_part |>
-                by([:pol, :n_travel, :start_R, :vigor_cost2],
-                mean_L = mean(:lag), max_L = maximum(:lag),
-                min_L = minimum(:lag), L = mean(:lag))
-
-rho_sum = @linq data_part |>
-                by([:n_travel, :start_R, :vigor_cost2],
-                rho = mean(:rho), rew_thresh = mean(:reward_thresh),
-                stay_lag = mean(:stay_lag), pred_thresh = mean(:pred_thresh),
-                leave_lag = mean(:leave_lag))
-
-plot1 = plot(rho_sum, y = :leave_lag, x = :rew_thresh, color = :vigor_cost2)
-plot2 = plot(rho_sum, y = :stay_lag, x = :rew_thresh, color = :vigor_cost2)
-plot3 = plot(rho_sum, y = :stay_lag, x = :leave_lag, color = :vigor_cost2)
-
-lag_vs_thresh_point = vstack(plot1, plot2, plot3)
-
-
-lag_plot = plot(lag_sum, x = :pol, y = :L,
-    Geom.subplot_grid(Geom.bar(position= :dodge)),
-    color = :vigor_cost2, y_group = :n_travel,
-    x_group = :start_R,
-    Guide.ylabel("N Travel States"),
-    Guide.xlabel("Action by Start R"),
-    Guide.colorkey(title = "Vigor Cost"),
-    Guide.title("Lag")
-    )
-
-rho_plot = plot(rho_sum, x = :start_R, y = :rho,
-    Geom.subplot_grid(Geom.bar(position= :dodge)),
-    color = :vigor_cost2, y_group = :n_travel,
-    Guide.ylabel("Rho by N Travel States"),
-    Guide.xlabel("Action by Start R"),
-    Guide.colorkey(title = "Vigor Cost")
-    )
-
-exit_thresh = plot(rho_sum, x = :start_R, y = :rew_thresh,
-    Geom.subplot_grid(Geom.bar(position= :dodge)),
-    color = :vigor_cost2, y_group = :n_travel,
-    Guide.ylabel("N Travel States"),
-    Guide.xlabel("Start R"),
-    Guide.colorkey(title = "Vigor Cost"),
-    Guide.title("Exit Thresholds")
-    )
-
-exit_thresh_lag = vstack(lag_plot, exit_thresh)
-
-draw(PDF("plots/exit_thresh_lag2.pdf", 8inch, 12inch), exit_thresh_lag)
-draw(PDF("plots/exit_thresh_lag_point2.pdf", 8inch, 12inch), lag_vs_thresh_point)
