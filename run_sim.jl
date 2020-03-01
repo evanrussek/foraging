@@ -1,28 +1,30 @@
 
-cd("C:\\Users\\erussek\\foraging")
+#cd("C:\\Users\\erussek\\foraging")
+cd("/Users/evanrussek/foraging")
 
+# add package
 using Gadfly
 using DataFrames
 using Distances
 using DataFramesMeta
 using CategoricalArrays
-import Cairo
-import Fontconfig
+#using Cairo
+#using Fontconfig
 using Statistics
 
 include("forage_functions.jl")
 
-## run through experiments...
-data_exp2 = DataFrame();
+## run through experiments..
+data_exp = DataFrame();
 
 # run this for different start rewards
-for start_reward = 50.:10:200.
+for start_reward = [60.,90.,120]
     for decrement = .98
         for n_travel_states = 22
             for vigor_cost1 = 1.
-                for vigor_cost2 = 1.:2:20.
+                for vigor_cost2 = 1.:5:21.
                     #println(start_reward, n_travel_states, vigor_cost2)
-                    global data_exp2 = [data_exp2; sim_forage_pi(start_reward,decrement,
+                    global data_exp = [data_exp; sim_forage_pi(start_reward,decrement,
                             n_travel_states, [vigor_cost1, vigor_cost2])]
                 end
             end
@@ -32,7 +34,7 @@ end
 
 
 # want to make a plot
-data_part_exp2 = @linq data_exp2 |>
+data_part_exp = @linq data_exp |>
            transform(decrement = CategoricalArray(:decrement),
                     #start_R = CategoricalArray(:start_R),
                     n_travel = CategoricalArray(:n_travel),

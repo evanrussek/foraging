@@ -1,5 +1,5 @@
 
-cd("C:\\Users\\erussek\\foraging")
+#cd("C:\\Users\\erussek\\foraging")
 
 using Gadfly
 using DataFrames
@@ -67,7 +67,7 @@ time_cost_plot = plot([x -> time_cost(x,2),
         .1,1,
         Guide.xlabel("lag"), Guide.ylabel("time cost"),
         Guide.colorkey(title="Unit Cost",labels = ["2", "6", "10"] ))
-draw(PDF("plots/time_cost_plot.pdf", 8inch, 8inch), time_cost_plot)
+#draw(PDF("plots/time_cost_plot.pdf", 8inch, 8inch), time_cost_plot)
 
 
 function evaluate_policy(Rs, next_state, vigor_cost, policy, lag)
