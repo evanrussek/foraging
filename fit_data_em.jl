@@ -1,5 +1,5 @@
 
-parallel = false # Run on multiple CPUs. If you are having trouble, set parallel = false: easier to debug
+parallel = true # Run on multiple CPUs. If you are having trouble, set parallel = false: easier to debug
 full = false    # Maintain full covariance matrix (vs a diagional one) a the group level
 emtol = 1e-3    # stopping condition (relative change) for EM
 
@@ -27,25 +27,25 @@ using CSV
 using DataFramesMeta
 using CategoricalArrays
 using Gadfly
-using Statistics
-using Distributions
-using SpecialFunctions
+# using Statistics
+# using Distributions
+#using SpecialFunctions
 using StatsFuns
-using Optim
+#using Optim
 using ForwardDiff
 using Cairo
 using Fontconfig
 
 ## prepare the data...
 
-cd("/Users/evanrussek/foraging/")
+@everywhere cd("/Users/evanrussek/foraging/")
 
 # basic real data clearning, etc, functions...
-include("/Users/evanrussek/lockin_data/lockin_analysis/forage_data_funs.jl")
-include("sim_lag_functions.jl")
-include("sim_learn_funcs.jl")
-include("simulation_functions.jl")
-include("lik_funs.jl")
+@everywhere include("/Users/evanrussek/lockin_data/lockin_analysis/forage_data_funs.jl")
+@everywhere include("sim_lag_functions.jl")
+@everywhere include("sim_learn_funcs.jl")
+@everywhere include("simulation_functions.jl")
+@everywhere include("lik_funs.jl")
 
 # read in the data...
 data = CSV.read("/Users/evanrussek/forage_jsp/analysis/data/run5_data.csv");
@@ -77,7 +77,7 @@ pdata_clean = @where(pdata, :remove .== false);
 pdata_clean.sub = groupindices(groupby(pdata_clean,:subjectID));
 
 # should be ready...
-em_dir =  "/Users/evanrussek/em";
+@everywhere em_dir =  "/Users/evanrussek/em";
 @everywhere include("$em_dir/em.jl");
 @everywhere include("$em_dir/common.jl");
 @everywhere include("$em_dir/likfuns.jl")
@@ -125,9 +125,11 @@ for r = 1:10
 	s_data[!,:subjectID] .= r;
 	s_data[!,:upper_lag_thresh] .= Inf;
 	s_data[!,:lower_lag_thresh] .= -Inf;
-	sim_data = [sim_data;s_data];
+	global sim_data = [sim_data;s_data];
 end
 sim_data[!,:remove] .= false;
+
+@where(sim_data, :phase .== "HARVEST")
 
 sim_data
 
