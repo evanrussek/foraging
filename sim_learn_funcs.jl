@@ -894,7 +894,7 @@ function make_group_trial_exit(pdata)
     return group_trial_exit
 end
 
-function make_group_exit_plot(pdata; title = "")
+function make_group_exit_plot(pdata; title = "", bounds = [0, 100])
     group_trial_exit = make_group_trial_exit(pdata);
     return plot(group_trial_exit, x = :start_reward_cat, y = :exit_thresh, ymin = :lower, ymax = :upper,
         color = :travel_key_cond, Geom.line(), Geom.point(),
@@ -904,8 +904,9 @@ function make_group_exit_plot(pdata; title = "")
         Guide.title(title),
         Guide.xlabel("Tree First Reward", orientation = :horizontal),
         Guide.ylabel("Last Reward Before Exit"),
-        Guide.colorkey(title = "Travel Key")
-        )
+        Guide.colorkey(title = "Travel Key"),
+        Coord.Cartesian(ymin = bounds[1], ymax = bounds[2])
+    )
 end
 
 function make_group_lag_df(pdata)

@@ -81,7 +81,6 @@ sim_data = sim_forage_no_learn(param_dict)
 sim_data[!,:lower_lag_thresh] .= -Inf;
 sim_data[!,:upper_lag_thresh] .= Inf;
 
-
 make_lag_plot(sim_data)
 
 make_exit_plot(sim_data)
@@ -90,7 +89,8 @@ make_exit_plot(sim_data)
 param_names = ["choice_r_hard_low_beta", "choice_r_easy_beta", "choice_r_reward_beta",
                 "lag_r_hard_low_beta", "lag_r_easy_beta", "lag_r_reward_beta",
                 "harvest_cost", "travel_cost_easy", "travel_cost_hard",
-                "choice_beta", "lag_beta"];
+                "choice_beta"];
+
 n_params = length(param_names);
 
 param_vals_orig = zeros(n_params);
@@ -131,7 +131,6 @@ end
 p_hat_dict["choice_beta"] = 1;
 p_hat_dict["lag_beta"] = 1;
 
-
 rec_data = sim_forage_no_learn(p_hat_dict)
 rec_data[!,:lower_lag_thresh] .= -Inf;
 rec_data[!,:upper_lag_thresh] .= Inf;
@@ -166,7 +165,7 @@ function gen_sim_params()
     param_dict["travel_cost_hard"] = 4*rand();
 
     param_dict["choice_beta"] = 2*rand();
-    param_dict["lag_beta"] = 2*rand();
+    param_dict["lag_beta"] = #10*rand();#1.;#2*rand();
 
     return param_dict
 
@@ -210,16 +209,32 @@ end
 plot(@where(param_recov_df, :name .== param_names[2]), x = :orig, y = :recov)
 
 using Compose
-set_default_plot_size(20cm, 20cm)
-M = Array{Union{Compose.Context, Plot}}(undef,3,3)
+set_default_plot_size(12cm, 20cm)
+M = Array{Union{Compose.Context, Plot}}(undef,4,3)
 for p_idx = 1:n_params
-    p = plot(@where(param_recov_df,:name .== param_names[p_idx]),
+    p = plot(@where(param_recov_df,:name .== param_names[p_idx], :recov .< 10, :recov .> -10),
      x = :orig, y = :recov,
-     Guide.title(param_names[p_idx]))
+     Guide.title(param_names[p_idx]),
+     Coord.Cartesian(ymin= 0 ,ymax=4, xmin = 0, xmax = 4))
     M[p_idx] = p;
 end
+
+for i = n_params+1:12
+    M[i] = context()
+end
+
+
 param_recov_plot1 = gridstack(M)
 
-draw(PNG("plots/nolearn_nob_recovery/recov_plot.png", 6inch, 6inch), param_recov_plot1)
+draw(PNG("plots/nolearn_nob_recovery/choice_brecov_plot.png", 6inch, 8inch), param_recov_plot1)
 
 # now let's run it with betas as free parameters...
+
+#
+
+# compute the bottom threshold
+
+
+sqrt(p_hat_dict["travel_cost_hard"]*10)*sqrt(p_hat_dict["lag_r_hard_low_beta"]) +
+
+p_hat_dict["choice_r_hard_low_beta"]
