@@ -931,17 +931,34 @@ function make_group_lag_df(pdata)
     return group_lag_df
 end
 
-function make_group_lag_plot(pdata; title = "")
+function make_group_lag_plot(pdata; title = "", right_side = false)
     group_lag_df = make_group_lag_df(pdata);
-    return plot(group_lag_df, x = :start_reward_cat, y = :log_lag_mean, color = :travel_key_cond,
-        ymax = :upper, ymin = :lower, xgroup = :phase,
-        Geom.subplot_grid(Geom.line(), Geom.point(), Geom.errorbar()),
-        Scale.x_discrete(levels = sort(unique(group_lag_df[!,:start_reward_cat]))),
-        Scale.color_discrete(levels = ["HARD", "EASY"]),
-        Guide.ylabel("Log Lag"),
-        Guide.xlabel("Tree First Reward by Part", orientation = :horizontal),
-        Guide.colorkey(title = "Travel Key"),
-        Guide.title(title))
+
+    if right_side
+        plot(group_lag_df, x = :start_reward_cat, y = :log_lag_mean, color = :travel_key_cond,
+            ymax = :upper, ymin = :lower, xgroup = :phase,
+            Geom.subplot_grid(Geom.line(), Geom.point(), Geom.errorbar()),
+            Scale.x_discrete(levels = sort(unique(group_lag_df[!,:start_reward_cat]))),
+            Scale.color_discrete(levels = ["HARD", "EASY"]),
+            Guide.ylabel("Log Lag"),
+            Guide.xlabel("Tree First Reward by Part", orientation = :horizontal),
+            #Guide.colorkey(title = "Travel Key"),
+            Guide.title(title),
+            Theme(key_position = :none))
+    else
+        return plot(group_lag_df, x = :start_reward_cat, y = :log_lag_mean, color = :travel_key_cond,
+            ymax = :upper, ymin = :lower, xgroup = :phase,
+            Geom.subplot_grid(Geom.line(), Geom.point(), Geom.errorbar()),
+            Scale.x_discrete(levels = sort(unique(group_lag_df[!,:start_reward_cat]))),
+            Scale.color_discrete(levels = ["HARD", "EASY"]),
+            Guide.ylabel("Log Lag"),
+            Guide.xlabel("Tree First Reward by Part", orientation = :horizontal),
+            Guide.colorkey(title = "Travel Key"),
+            Guide.title(title))
+
+    end
+
+
 end
 
 function transform_lr(lr_orig)
