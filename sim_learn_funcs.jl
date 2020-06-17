@@ -931,10 +931,10 @@ function make_group_lag_df(pdata)
     return group_lag_df
 end
 
-function make_group_lag_plot(pdata; title = "", right_side = false)
+function make_group_lag_plot(pdata; title = "", side = "left")
     group_lag_df = make_group_lag_df(pdata);
 
-    if right_side
+    if side == "right"
         plot(group_lag_df, x = :start_reward_cat, y = :log_lag_mean, color = :travel_key_cond,
             ymax = :upper, ymin = :lower, xgroup = :phase,
             Geom.subplot_grid(Geom.line(), Geom.point(), Geom.errorbar()),
