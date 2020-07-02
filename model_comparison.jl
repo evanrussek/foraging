@@ -22,7 +22,6 @@ using Fontconfig
 @everywhere include("simulation_functions.jl")
 @everywhere include("lik_funs.jl")
 
-
 param_dict = Dict();
 
 # spread parameters# lag beta...
@@ -47,7 +46,6 @@ sim_data = sim_forage_learn_mult(param_dict)
 sim_data[!,:lower_lag_thresh] .= -Inf;
 sim_data[!,:upper_lag_thresh] .= Inf;
 make_lag_plot(sim_data)
-
 make_exit_plot(sim_data)
 
 # let's try to fit this...
@@ -120,8 +118,7 @@ param_names = ["choice_beta", "lag_beta",
 	"lr_R_hat_pre_lag", "lr_R_hat_pre_choice",
 	"harvest_cost_lag", "travel_cost_easy_lag", "travel_cost_hard_lag",
 	"harvest_cost_choice", "travel_cost_easy_choice", "travel_cost_hard_choice",
-	"R_hat_start_lag", "R_hat_start_choice"
-	];
+	"R_hat_start_lag", "R_hat_start_choice"];
 
 NP = length(param_names);
 
@@ -158,7 +155,7 @@ m1_res["iaic"] = iaic_m1;
 @save("model_res/full_m1.jld", m1_res)
 
 
-function make_recov_plots(x, param_names, sim_func; n_rep = 2)
+function make_recov_plots(x_m1, param_names, sim_func; n_rep = 2)
 	# re-simulate this model...
 	group_rec_data = DataFrame();
 	for rep = 1:n_rep

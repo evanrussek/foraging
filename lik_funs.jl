@@ -653,7 +653,6 @@ function forage_lik_R1_mult_lb(param_vals, data; which_data = "both", add_h_bias
     else
         return -1*(lag_ll + choice_ll);
     end
-
 end
 
 

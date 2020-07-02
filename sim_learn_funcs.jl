@@ -1,601 +1,4 @@
-### simulate the original task...
-### what are the key task parameters?
-# decay rate... .98 # decay only happens on a successful press...
-#  n travel steps: 16
-# reward noise: 2.4
-# start reward noise: 4
-# time: 2.34 minutes
-# travel success prob: .8
-# harvest success prob: .5
 
-function sim_forage_learn(param_dict)
-
-    time_scale = 1. / 100;
-    n_travel_steps = 16;
-    nmin = 2.33;
-    total_time_units = nmin*60*1000*time_scale;
-    travel_success_prob = .8;
-    harvest_success_prob = .5;
-    decay = .98;
-    reward_noise = 2.4;
-    start_reward_noise = 4;
-
-    simID = "sim1";
-
-    ############# game parameters that vary over trials
-    start_rewards = [60., 90., 120., 60., 90., 120.];
-    travel_keys = ["HARD","HARD","HARD","EASY","EASY","EASY"];
-
-    ##################### agent parameters
-    ##### button press costs
-    harvest_cost = param_dict["harvest_cost"] * 10.;
-    travel_cost_easy = param_dict["travel_cost_easy"] * 10.;
-    travel_cost_hard = param_dict["travel_cost_hard"] * 10.;
-    r_hat_start_reward_weight = param_dict["r_hat_start_reward_weight"];
-    r_hat_start_easy_weight = param_dict["r_hat_start_easy_weight"] * 10;
-    harvest_lag_hat_start = param_dict["harvest_lag_hat_start"];
-    harvest_bias = param_dict["harvest_bias"];
-    choice_beta = param_dict["choice_beta"];
-    lag_beta = param_dict["lag_beta"];
-    lr_R_hat_pre = param_dict["lr_R_hat_pre"];  #### does this break if lr_R_hat is too large?
-    lr_harvest_lag_hat_pre = param_dict["lr_harvest_lag_hat_pre"];
-    lr_R_hat = 0.5 + 0.5 * erf(lr_R_hat_pre / sqrt(2));
-    lr_harvest_lag_hat = 0.5 + 0.5 * erf(lr_harvest_lag_hat_pre / sqrt(2));
-
-
-    ########################################
-
-    travel_costs = Dict();
-    travel_costs["HARD"] = travel_cost_hard;
-    travel_costs["EASY"] = travel_cost_easy;
-
-    ###### for picking a lag -- what numbers to evaluate...
-    lag_incr = .005;
-    lag_range = 0.001:lag_incr:50.;
-
-
-    # to hold structure DF
-    sim_df = DataFrame()
-
-    #for r_idx in 1:4
-    for trial_idx in 1:6
-
-        ############### structures to record data
-        lags = Float64[];
-        choices = Int64[];
-        phase = String[];
-        reward_obs = Float64[];
-        reward_true = Float64[];
-        time_units = Float64[];
-        R_hat_hist = Float64[];
-        round_num = Int64[];
-        threshold_hist = Float64[];
-
-        ######### game state parameters
-        current_time_unit = 0.;
-        steps_to_tree = n_travel_steps;
-        this_round_hpress_number = 1;
-        steps_to_tree = n_travel_steps;
-
-        trial_start_reward_mean = start_rewards[trial_idx];
-        trial_travel_key = travel_keys[trial_idx];
-        travel_cost = travel_costs[trial_travel_key];
-
-        # get starting values for parameters that we'll learn from experience
-        R_hat_start = r_hat_start_reward_weight*trial_start_reward_mean +
-                        r_hat_start_easy_weight*(trial_travel_key == "EASY");
-
-        R_hat = copy(R_hat_start);
-        harvest_lag_hat = copy(harvest_lag_hat_start);
-
-        #println("trial number" , trial_idx, "travel key", trial_travel_key, "start_reward", trial_start_reward_mean)
-
-        this_round = 1;
-
-        # begin trial loop
-        while current_time_unit < total_time_units
-
-            #println(steps_to_tree)
-
-            # if we're at the tree then harvest
-            if steps_to_tree == 0
-
-                if this_round_hpress_number == 1
-                    global last_reward_obs
-                    global tree_current_reward
-                    tree_current_reward = rand(Normal(trial_start_reward_mean,start_reward_noise))
-                    last_reward_obs = tree_current_reward;
-                end
-
-                # maybe this should iteratively updated / learned from experience...???
-                this_lag = sample_lag(lag_beta, R_hat, harvest_cost, lag_range)
-                E_next_reward_harvest = last_reward_obs*decay*harvest_success_prob - vigor_cost(harvest_cost, harvest_lag_hat);
-                E_opportunity_cost_harvest = R_hat*harvest_lag_hat;
-
-                threshold = R_hat*harvest_lag_hat + vigor_cost(harvest_cost, harvest_lag_hat);
-
-                # if it's positive you stay, negative you leave
-                dv = E_next_reward_harvest - E_opportunity_cost_harvest;
-
-                p_Harvest = 1 ./ (1 + exp(-1*(harvest_bias + choice_beta*dv)));
-                choose_Harvest =  rand() < p_Harvest;
-
-                if choose_Harvest
-                    push!(choices,1);
-                    this_round_hpress_number = this_round_hpress_number+1;
-                    this_unit_cost = harvest_cost;
-                    this_phase = "HARVEST";
-                    # choose a lag...
-                    this_lag = sample_lag(lag_beta, R_hat, this_unit_cost, lag_range)
-
-                    this_cost = vigor_cost(this_unit_cost, this_lag);
-
-                    # update the harvest lag hat
-                    harvest_lag_hat = lr_harvest_lag_hat*this_lag + (1 - lr_harvest_lag_hat)*harvest_lag_hat;
-
-
-                    # check if the move is successful
-                    if rand() < harvest_success_prob
-                        # sample reward
-                        this_reward = rand(Normal(tree_current_reward, reward_noise));
-                        last_reward_obs = this_reward;
-
-                        # update trees current reward if move is successful...
-                        tree_current_reward = tree_current_reward*decay;
-                    else
-                        this_reward = 0.; # nothing updates...
-                    end
-                    # reward observed
-
-                else # chose travel...
-                    this_unit_cost = travel_cost;
-                    this_phase = "HARVEST";
-                    # make a lag here, but overall, don't add this lag to the likelihood
-                    this_lag = sample_lag(lag_beta, R_hat, this_unit_cost, lag_range)
-                    this_round_hpress_number = 1;
-                    steps_to_tree = n_travel_steps; # this will push it into harvest round...
-                    #tree_current_reward = trial_start_reward;
-                    this_reward = 0.
-
-                    this_cost = vigor_cost(this_unit_cost,this_lag)
-                    push!(choices,2);
-
-                    # update the round count...
-                    this_round = this_round + 1;
-
-               # break
-                end
-
-                push!(lags,this_lag)
-                #push!(choices,1)
-                push!(phase, this_phase)
-                push!(reward_obs, this_reward)
-                push!(time_units, current_time_unit)
-                push!(round_num, this_round)
-                push!(reward_true, tree_current_reward)
-
-                # update the clock...
-                current_time_unit = current_time_unit + this_lag;
-
-            else # if we're traveling
-
-                this_reward = 0.;
-                this_unit_cost = travel_cost; # that's not the cost...
-                this_lag = sample_lag(lag_beta, R_hat, travel_cost, lag_range)
-                this_cost = vigor_cost(this_unit_cost, this_lag);
-
-                #### record data from the key press ##  also there's this cost
-                push!(lags,this_lag)
-                push!(choices,2)
-                push!(phase, "TRAVEL")
-                push!(reward_obs, this_reward)
-                push!(time_units, current_time_unit)
-                push!(round_num, this_round)
-                push!(reward_true, 0.);
-
-
-                #### update agent position
-                if rand() < travel_success_prob
-                    steps_to_tree = steps_to_tree - 1;
-                end
-
-                current_time_unit = current_time_unit + this_lag;
-            end
-            # store the R_hat that led to this decision
-            threshold = R_hat*harvest_lag_hat + vigor_cost(harvest_cost, harvest_lag_hat);
-
-            push!(R_hat_hist, R_hat)
-            push!(threshold_hist, threshold)
-            push!(harvest_lag_hat_hist, harvest_lag_hat)
-
-
-            ## update R_hat...
-            this_move_rr = (this_reward - this_cost) / this_lag;
-            R_hat = (1 - (1 - lr_R_hat)^this_lag)*this_move_rr + ((1 - lr_R_hat)^this_lag)*R_hat;
-            # store R_hat...
-
-        end
-
-        # put the trial_results in a dataframe # also put round in here...
-        trial_df = DataFrame(lag = lags,
-                choice = choices,
-                phase = phase,
-                reward_obs = reward_obs,
-                time = time_units,
-                R_hat = R_hat_hist,
-                round = round_num,
-                threshold = threshold_hist,
-                harvest_lag_hat = harvest_lag_hat_hist,
-                reward_true = reward_true);
-
-        trial_df[!,:trial_num] .= trial_idx;
-        trial_df[!,:start_reward] .= trial_start_reward_mean;
-        trial_df[!,:travel_key_cond] .= trial_travel_key;
-        trial_df[!,:subjectID] .= simID;
-        trial_df[!,:lag_scale] = trial_df[!,:lag] ./ time_scale;
-
-        sim_df = [sim_df; trial_df]
-        #global sim_df = [sim_df; trial_df]
-    end
-
-    return sim_df
-end
-
-
-function sim_forage2(param_dict)
-    ## simulate with only 6 parameters...
-    time_scale = 1. / 100;
-    n_travel_steps = 16;
-    nmin = 2.33;
-    total_time_units = nmin*60*1000*time_scale;
-    travel_success_prob = .8;
-    harvest_success_prob = .5;
-    decay = .98;
-    reward_noise = 2.4;
-    start_reward_noise = 4;
-
-    simID = "sim1";
-
-    ############# game parameters that vary over trials
-    start_rewards = [60., 90., 120., 60., 90., 120.];
-    travel_keys = ["HARD","HARD","HARD","EASY","EASY","EASY"];
-
-    ##################### agent parameters
-
-    ##### 6 parameters...
-    harvest_cost = param_dict["harvest_cost"]*10;
-    travel_cost_easy = param_dict["travel_cost_easy"]*10;
-    travel_cost_hard = param_dict["travel_cost_hard"]*10;
-    choice_beta = 1.;#param_dict["choice_beta"];  # choice_beta
-    lag_beta = 1.#param_dict["lag_beta"];
-    lr_R_hat_pre = param_dict["lr_R_hat_pre"];
-
-    # more extreme scaling...
-    lr_R_hat = (.5 + .5*erf(lr_R_hat_pre/5))/10; #0.5 + 0.5 * erf(lr_R_hat_pre / sqrt(2));
-
-
-    ########################################
-
-    travel_costs = Dict();
-    travel_costs["HARD"] = travel_cost_hard;
-    travel_costs["EASY"] = travel_cost_easy;
-
-    ###### for picking a lag -- what numbers to evaluate...
-    lag_incr = .005;
-    lag_range = 0.001:lag_incr:50.;
-
-    R_hat_start = 5.;
-
-
-    # to hold structure DF
-    sim_df = DataFrame()
-
-    #for r_idx in 1:4
-    for trial_idx in 1:6
-
-        ############### structures to record data
-        lags = Float64[];
-        choices = Int64[];
-        phase = String[];
-        reward_obs = Float64[];
-        reward_true = Float64[];
-        time_units = Float64[];
-        R_hat_hist = Float64[];
-        round_num = Int64[];
-        harvest_lag_hat_hist = Float64[];
-
-        ######### game state parameters
-        current_time_unit = 0.;
-        steps_to_tree = n_travel_steps;
-        this_round_hpress_number = 1;
-        steps_to_tree = n_travel_steps;
-
-        trial_start_reward_mean = start_rewards[trial_idx];
-        trial_travel_key = travel_keys[trial_idx];
-        travel_cost = travel_costs[trial_travel_key];
-
-        R_hat = copy(R_hat_start);  #### update this...
-
-        this_round = 1;
-        last_reward_obs = trial_start_reward_mean;
-        tree_current_reward = rand(Normal(trial_start_reward_mean,start_reward_noise));
-
-        # begin trial loop
-        while current_time_unit < total_time_units
-
-            #println(steps_to_tree)
-
-            # if we're at the tree then harvest
-            if steps_to_tree == 0
-
-                #
-                this_lag = sample_lag(lag_beta, R_hat, harvest_cost, lag_range)
-                #expected_lag =
-                # optimal lag...
-                current_optimal_lag = sqrt(harvest_cost / R_hat)
-                E_next_reward_harvest = last_reward_obs*decay*harvest_success_prob - vigor_cost(harvest_cost, current_optimal_lag);
-                E_opportunity_cost_harvest = R_hat*current_optimal_lag;
-
-                # current optimal lag...
-                #threshold = R_hat*harvest_lag_hat + vigor_cost(harvest_cost, current_optimal_lag);
-
-                # if it's positive you stay, negative you leave
-                dv = E_next_reward_harvest - E_opportunity_cost_harvest;
-
-                p_Harvest = 1 ./ (1 + exp(-1*(choice_beta*dv)));
-                choose_Harvest =  rand() < p_Harvest;
-
-                if choose_Harvest
-                    push!(choices,1);
-                    this_round_hpress_number = this_round_hpress_number+1;
-                    this_unit_cost = harvest_cost;
-                    this_phase = "HARVEST";
-                    # choose a lag...
-                    this_lag = sample_lag(lag_beta, R_hat, this_unit_cost, lag_range)
-
-                    this_cost = vigor_cost(this_unit_cost, this_lag);
-
-                    # check if the move is successful
-                    if rand() < harvest_success_prob
-                        # sample reward
-                        this_reward = rand(Normal(tree_current_reward, reward_noise));
-                        last_reward_obs = this_reward;
-
-                        # update trees current reward if move is successful...
-                        tree_current_reward = tree_current_reward*decay;
-                    else
-                        this_reward = 0.; # nothing updates...
-                    end
-                    # reward observed
-
-                else # chose travel...
-                    this_unit_cost = travel_cost;
-                    this_phase = "HARVEST";
-                    # make a lag here, but overall, don't add this lag to the likelihood
-                    this_lag = sample_lag(lag_beta, R_hat, this_unit_cost, lag_range)
-                    steps_to_tree = n_travel_steps; # this will push it into harvest round...
-                    #tree_current_reward = trial_start_reward;
-                    this_reward = 0.
-
-                    this_cost = vigor_cost(this_unit_cost,this_lag)
-                    push!(choices,2);
-
-                    # update the round count...
-                    this_round = this_round + 1;
-
-                    # reset tree current reward and last_reward_obs
-                    last_reward_obs = trial_start_reward_mean;
-                    tree_current_reward = rand(Normal(trial_start_reward_mean,start_reward_noise));
-               # break
-                end
-
-                push!(lags,this_lag)
-                #push!(choices,1)
-                push!(phase, this_phase)
-                push!(reward_obs, this_reward)
-                push!(time_units, current_time_unit)
-                push!(round_num, this_round)
-                push!(reward_true, tree_current_reward)
-
-                # update the clock...
-                current_time_unit = current_time_unit + this_lag;
-
-            else # if we're traveling
-
-                this_reward = 0.;
-                this_unit_cost = travel_cost; # that's not the cost...
-                this_lag = sample_lag(lag_beta, R_hat, travel_cost, lag_range)
-                this_cost = vigor_cost(this_unit_cost, this_lag);
-
-                #### record data from the key press ##  also there's this cost
-                push!(lags,this_lag)
-                push!(choices,2)
-                push!(phase, "TRAVEL")
-                push!(reward_obs, this_reward)
-                push!(time_units, current_time_unit)
-                push!(round_num, this_round)
-                push!(reward_true, 0.);
-
-
-                #### update agent position
-                if rand() < travel_success_prob
-                    steps_to_tree = steps_to_tree - 1;
-                end
-
-                current_time_unit = current_time_unit + this_lag;
-            end
-            # store the R_hat that led to this decision
-
-            push!(R_hat_hist, R_hat)
-            #push!(threshold_hist, threshold)
-
-            ## update R_hat...
-            this_move_rr = (this_reward - this_cost) / this_lag;
-            R_hat = (1 - (1 - lr_R_hat)^this_lag)*this_move_rr + ((1 - lr_R_hat)^this_lag)*R_hat;
-            # store R_hat...
-
-        end
-
-        # put the trial_results in a dataframe # also put round in here...
-        trial_df = DataFrame(lag = lags,
-                choice = choices,
-                phase = phase,
-                reward_obs = reward_obs,
-                time = time_units,
-                R_hat = R_hat_hist,
-                round = round_num,
-                reward_true = reward_true);
-
-        trial_df[!,:trial_num] .= trial_idx;
-        trial_df[!,:start_reward] .= trial_start_reward_mean;
-        trial_df[!,:travel_key_cond] .= trial_travel_key;
-        trial_df[!,:subjectID] .= simID;
-        trial_df[!,:lag_scale] = trial_df[!,:lag] ./ time_scale;
-
-        sim_df = [sim_df; trial_df]
-        #global sim_df = [sim_df; trial_df]
-
-    end
-    return sim_df
-end
-
-
-
-function forage_learn_lik(params, data)
-
-    harvest_bias = params[1];
-    travel_cost_hard = params[2]*10; # just doing some scaling...
-    r_hat_start_easy_weight  = params[3]*10;
-    r_hat_start_reward_weight = params[4];
-    choice_beta              = params[5];
-    harvest_lag_hat_start    =  params[6] + .001;  # to avoid dividing by 0;
-    lr_harvest_lag_hat_pre   = params[7];
-    harvest_cost           = params[8]*10;
-    lag_beta              = params[9];
-    travel_cost_easy       = params[10]*10;
-    lr_R_hat_pre = params[11];
-
-    lr_R_hat = 0.5 + 0.5 * erf(lr_R_hat_pre / sqrt(2));
-    lr_harvest_lag_hat = 0.5 + 0.5 * erf(lr_harvest_lag_hat_pre / sqrt(2));
-
-    # get unique trials...
-    travel_costs = Dict();
-    travel_costs["HARD"] = travel_cost_hard;
-    travel_costs["EASY"] = travel_cost_easy;
-
-    ###### for picking a lag -- what numbers to evaluate......
-    lag_incr = .01; # could probably make this coarser as well....
-    lag_range = 0.001:lag_incr:25.; # this mght need to be increased for real data?
-    travel_success_prob = .8;
-    harvest_success_prob = .5;
-    decay = .98;
-
-    lag_ll = 0;
-    choice_ll = 0;
-
-    trial_list = unique(data[!,:trial_num])
-
-    ### likelihood function...
-
-    for trial_idx in trial_list
-
-        last_reward_obs = 1000;
-
-        trial_data = data[data[!,:trial_num] .== trial_idx,:];
-
-        trial_travel_key = trial_data[1,:travel_key_cond]
-        travel_cost = travel_costs[trial_travel_key]
-        trial_start_reward = trial_data[1,:start_reward];
-
-        # get starting values for parameters that we'll learn from experience
-        R_hat = r_hat_start_reward_weight*trial_start_reward +
-                        r_hat_start_easy_weight*(trial_travel_key == "EASY");
-
-
-        harvest_lag_hat = copy(harvest_lag_hat_start);
-
-        # go through each measure in trial_data
-        n_presses = size(trial_data,1);
-        for press_idx in 1:n_presses
-
-            # what if this is what makes it slow?
-            press_data = trial_data[press_idx,:];
-
-            if press_data[:phase] == "HARVEST"
-
-
-                E_next_reward_harvest = last_reward_obs*decay*harvest_success_prob - (harvest_cost / harvest_lag_hat);
-                E_opportunity_cost_harvest = R_hat*harvest_lag_hat;
-
-                theta_harvest = harvest_bias + choice_beta*E_next_reward_harvest;
-                theta_leave = choice_beta*E_opportunity_cost_harvest;
-
-                theta = [theta_harvest, theta_leave]
-
-                choice_ll = choice_ll + theta[press_data[:choice]] - logsumexp(theta);
-
-                #println("choice: ", press_data[:choice])
-
-                if (press_data[:choice] == 1) # choose harvest
-
-                    vigor_cost_range = harvest_cost ./ lag_range;
-                    opportunity_cost_range = R_hat .* lag_range;
-                    lag_cost_range = vigor_cost_range + opportunity_cost_range;
-                    lag_range_lp_unnorm = lag_beta.* -1 .* lag_cost_range;
-                    this_lag = press_data[:lag]
-                    harvest_lag_hat = lr_harvest_lag_hat*this_lag + (1 - lr_harvest_lag_hat)*harvest_lag_hat;
-                    this_lag_idx = searchsortedfirst(lag_range, this_lag); # is this slow?
-
-                    press_ll = lag_range_lp_unnorm[this_lag_idx] - logsumexp(lag_range_lp_unnorm);
-                    lag_ll = lag_ll + press_ll;
-
-                    this_cost = harvest_cost ./ this_lag;
-                    this_reward = press_data[:reward_obs];
-
-                    if this_reward > 0
-                        last_reward_obs = this_reward;
-                    end
-
-                else # choose travel
-
-                    vigor_cost_range = travel_cost ./ lag_range;
-                    opportunity_cost_range = R_hat .* lag_range;
-                    lag_cost_range = vigor_cost_range + opportunity_cost_range;
-                    lag_range_lp_unnorm = lag_beta.* -1 .* lag_cost_range;
-                    this_lag = press_data[:lag]
-                    this_lag_idx = searchsortedfirst(lag_range, this_lag); # hope this works on real data...
-                    press_ll = lag_range_lp_unnorm[this_lag_idx] - logsumexp(lag_range_lp_unnorm);
-                    lag_ll = lag_ll + press_ll;
-
-                    this_cost = travel_cost ./ this_lag;
-                    this_reward = press_data[:reward_obs];
-
-                    # reset the last_reward_obs for the next harvest
-                    last_reward_obs = 1000;
-                end
-            else # travel session - just pick a lag...
-                vigor_cost_range = travel_cost ./ lag_range;
-                opportunity_cost_range = R_hat .* lag_range;
-                lag_cost_range = vigor_cost_range + opportunity_cost_range;
-                lag_range_lp_unnorm = lag_beta.* -1 .* lag_cost_range;
-                this_lag = press_data[:lag]
-                this_lag_idx = searchsortedfirst(lag_range, this_lag); # hope this works on real data..., might be slow
-                press_ll = lag_range_lp_unnorm[this_lag_idx] - logsumexp(lag_range_lp_unnorm);
-                lag_ll = lag_ll + press_ll;
-
-                this_cost = travel_cost ./ this_lag;
-                this_reward = press_data[:reward_obs];
-            end
-
-            # update R_hat...
-            this_move_rr = (this_reward - this_cost) / this_lag;
-            R_hat = (1 - (1 - lr_R_hat)^this_lag)*this_move_rr + ((1 - lr_R_hat)^this_lag)*R_hat;
-
-        end
-    end
-    log_lik = lag_ll + choice_ll;
-    return -1*log_lik;
-end
 
 function relu_sm(x)
     # makes minimum value .0001
@@ -677,139 +80,6 @@ function log_lag_den_approx(R,C,B)
 
 end
 
-
-function forage_learn_lik3(param_vals, data, which_data)
-
-    #println(param_vals)
-
-    # get rid of lookup
-    #params = params .+ .0001;
-    #lag_beta = param_vals[1];
-    travel_cost_easy = param_vals[1]*10;
-    travel_cost_hard = param_vals[2]*10;
-    lr_R_hat_pre = param_vals[3];
-    #println(param_vals[3])
-    #println(string("lr_R_hat_pre: ", lr_R_hat_pre))
-
-    harvest_cost = param_vals[4]*10;
-    choice_beta = 1.;#param_vals[5];
-    lag_beta = 1.;
-    #println(string("lr_R_hat_pre: ", lr_R_hat_pre))
-
-
-    lr_R_hat = (.5 + .5*erf(lr_R_hat_pre/5))/10; #0.5 + 0.5 * erf(lr_R_hat_pre / sqrt(2));
-    # get unique trials...
-    travel_costs = Dict();
-    travel_costs["HARD"] = travel_cost_hard;
-    travel_costs["EASY"] = travel_cost_easy;
-
-    ###### for picking a lag -- what numbers to evaluate......
-    travel_success_prob = .8;
-    harvest_success_prob = .5;
-    decay = .98;
-
-    lag_ll = 0;
-    choice_ll = 0;
-
-    trial_list = unique(data[!,:trial_num])
-
-    for trial_idx in trial_list
-
-        # is this the problem???
-
-        trial_data = data[data[!,:trial_num] .== trial_idx,:];
-
-        lag = trial_data[!,:lag];
-        choice = trial_data[!,:choice];
-        phase = trial_data[!,:phase];
-        reward_obs = trial_data[!,:reward_obs];
-
-        trial_travel_key = trial_data[1,:travel_key_cond]
-        travel_cost = travel_costs[trial_travel_key]
-        trial_start_reward = trial_data[1,:start_reward];
-
-        last_reward_obs = copy(trial_start_reward);
-
-        #
-        R_hat = convert(typeof(lag_beta),5.); # maybe you need to fit this...
-
-        # go through each measure in trial_data
-        n_presses = size(lag,1);
-        for press_idx in 1:n_presses
-
-            if phase[press_idx] == "HARVEST"
-
-                if val_fail(R_hat,harvest_cost, lag_beta)
-                    return 1e9
-                end
-
-                current_optimal_lag = sqrt(harvest_cost / R_hat)
-                E_next_reward_harvest = last_reward_obs*decay*harvest_success_prob - (harvest_cost / current_optimal_lag);
-                E_opportunity_cost_harvest = R_hat*current_optimal_lag;
-
-                theta = [choice_beta*E_next_reward_harvest, choice_beta*E_opportunity_cost_harvest];
-                choice_ll = choice_ll + theta[choice[press_idx]] - logsumexp(theta);
-
-                if (choice[press_idx] == 1) # choose harvest
-
-                    #if val_fail(R_hat,harvest_cost, lag_beta)
-                    #    return 1e9
-                    #end
-
-                    this_lag = lag[press_idx];
-                    lag_ll = lag_ll + log_lik_lag(R_hat,harvest_cost,lag_beta,this_lag);
-
-                    this_cost = harvest_cost / this_lag;
-                    this_reward = reward_obs[press_idx];
-
-                    if this_reward > .0000001
-                        last_reward_obs = this_reward;
-                    end
-
-                else # choose travel
-                    if val_fail(R_hat,travel_cost, lag_beta)
-                        return 1e9
-                    end
-
-                    this_lag = lag[press_idx];
-                    lag_ll = lag_ll + log_lik_lag(R_hat,travel_cost,lag_beta,this_lag);
-
-                    this_cost = travel_cost / this_lag;
-                    this_reward = reward_obs[press_idx];
-
-                    # reset the last_reward_obs for the next harvest
-                    last_reward_obs = copy(trial_start_reward);
-                end
-            else # travel session - just pick a lag...
-
-                if val_fail(R_hat,travel_cost, lag_beta)
-                    return 1e9
-                end
-                this_lag = lag[press_idx];
-                lag_ll = lag_ll + log_lik_lag(R_hat,travel_cost,lag_beta,this_lag);
-                this_cost = travel_cost / this_lag;
-                this_reward = reward_obs[press_idx];
-            end
-
-            # update R_hat...
-            this_move_rr = (this_reward - this_cost) / this_lag;
-            R_hat = (1 - (1 - lr_R_hat)^this_lag)*this_move_rr + ((1 - lr_R_hat)^this_lag)*R_hat;
-
-        end
-    end
-
-    if which_data == "choice"
-        return -1*choice_ll
-    elseif which_data == "lag"
-        return -1*lag_ll
-    else
-        return -1*(lag_ll + choice_ll);
-    end
-
-end
-
-
-
 function get_trial_exit_threshs(trial_data)
 
     if size(trial_data,1) > 1
@@ -817,6 +87,8 @@ function get_trial_exit_threshs(trial_data)
             non_missing_harvest = @where(df, .&(:phase .== "HARVEST", :reward_obs .> 0));
             if size(non_missing_harvest,1) > 0
                 last_reward = non_missing_harvest.reward_true[end];
+                last_reward_time = non_missing_harvest.trial_time_elapsed[end];
+
                 df.reward_obs[ismissing.(df.reward_obs)] .= 0;
 
                 travel_df = @where(df, :phase .== "TRAVEL");
@@ -827,12 +99,14 @@ function get_trial_exit_threshs(trial_data)
                     subjectID = df.subjectID[1],
                     last_reward = last_reward,
                     start_reward = df.start_reward[1],
+                    last_reward_time = last_reward_time,
                     travel_key_cond = df.travel_key_cond[1],
                     );
             else
                 this_df = DataFrame(
                     subjectID = [],
                     last_reward = [],
+                    last_reward_time = [],
                     start_reward = [],
                     travel_key_cond = []);
             end
@@ -1037,22 +311,233 @@ function prep_subj_data(data_in)
     #s_data = DataFrame();
 
     s_data = DataFrame(data_in);#copy(data_in);
-    s_data[!,:lag_scale] = s_data[!,:lag];
+    s_data[!,:lag_scale] = copy(s_data[!,:lag]); # is this wrong?
     s_data[!,:lag] = s_data[!,:lag_scale] ./ 100;
+    
+    # add trial time elapsed...
+    s_data[!,:trial_time_elapsed] = zeros(length(s_data[!,:time_elapsed]));
+    for t_idx in unique(s_data.trial_num)
+        tdat = s_data[s_data[!,:trial_num].==t_idx,:];
+        s_data[s_data[!,:trial_num].==t_idx, :trial_time_elapsed] = tdat.time_elapsed .- tdat.time_elapsed[1];
+    end
 
     s_data[ismissing.(s_data[!,:reward_obs]),:reward_obs] .= 0;
     s_data[ismissing.(s_data[!,:exit]),:exit] .= 1;
     s_data[!,:choice] = s_data[!,:exit] .+ 1;
     s_data[!,:choice] = convert(Array{Int,1}, s_data[!,:choice]);
+    
+    # make a column that splits by press type
+    s_data[!,:button] .= string();
+    s_data[s_data[!,:phase] .== "HARVEST", :button] .= "HARVEST";
+    s_data[(s_data[!,:phase] .== "TRAVEL") .& (s_data[!,:travel_key_cond] .== "HARD"), :button] .= "TRAVEL_HARD";
+    s_data[(s_data[!,:phase] .== "TRAVEL") .& (s_data[!,:travel_key_cond] .== "EASY"), :button] .= "TRAVEL_EASY";
+    # this uses a split of 3, but changes by button press type... 
+    button_lag_thresh_df = by(s_data, :button, df -> DataFrame(upper_lag_thresh = median(df.lag) + 3*mad(df.lag), 
+            lower_lag_thresh = median(df.lag) - 3*mad(df.lag))) 
+    s_data = join(s_data, button_lag_thresh_df, on = :button, kind = :left);
+    s_data.trial_time_sec = s_data.trial_time_elapsed./1000;
+    s_data.upper_lag_thresh2 = median(s_data.lag) + 4*mad(s_data.lag);
+    s_data.lower_lag_thresh2 = median(s_data.lag) - 4*mad(s_data.lag); # 4 sds...
 
-    sub_df = s_data[!, [:round, :trial_num, :lag,
-    :lag_scale, :choice, :phase, :start_reward,
-     :reward_obs, :travel_key_cond, :subjectID, :reward_true]];
+    sub_df = s_data[!, [:round, :trial_num, :lag, :lag_scale, :choice, :phase, :start_reward,
+            :reward_obs, :travel_key_cond, :subjectID, :reward_true, :trial_time_elapsed, :button, 
+            :upper_lag_thresh, :lower_lag_thresh, :trial_time_sec, :upper_lag_thresh2, :lower_lag_thresh2]];
 
-    # pass these to the likelihood function...
-    upper_lag_thresh = median(s_data[!,:lag]) + 4*mad(s_data[!,:lag])
-    lower_lag_thresh = median(s_data[!,:lag]) - 4*mad(s_data[!,:lag])
-    sub_df[!,:upper_lag_thresh] .= upper_lag_thresh;
-    sub_df[!,:lower_lag_thresh] .= lower_lag_thresh;
     return sub_df
 end
+
+# make the lag over time and thresh over time plots
+function make_smooth_rr_DF(pdata)
+    pdata_lt = @where(pdata,:lag .< :upper_lag_thresh2, :lag .> :lower_lag_thresh2)
+    pdata_lt.log_lag = log.(pdata_lt.lag)
+    smooth_rr_DF = DataFrame();
+    for s_idx in unique(pdata_lt.sub)
+        print(s_idx)
+        sub_rr_DF = DataFrame();
+        
+        s_data = @where(pdata_lt, :sub .== s_idx);
+        s_data.lag_z = zscore(s_data.log_lag);
+        for t_idx in unique(pdata_lt.trial_num)
+            s_trial_harvest_data = @where(s_data, :phase .== "HARVEST", :trial_num .== t_idx);
+            harvest_DF= try
+                harvest_model = loess(s_trial_harvest_data.trial_time_sec, s_trial_harvest_data.lag_z);
+                us_harvest = range(extrema(s_trial_harvest_data.trial_time_sec)...; step = 1)
+                vs_harvest = Loess.predict(harvest_model, us_harvest);
+                
+                DataFrame(trial_time_sec = us_harvest, lag_smooth = vs_harvest, trial_num = t_idx, sub = s_idx,
+                                        start_reward = s_trial_harvest_data[1,:start_reward], 
+                                        travel_key_cond = s_trial_harvest_data[1,:travel_key_cond],phase = "HARVEST");
+                catch e
+                  bt = backtrace()
+                  msg = sprint(showerror, e, bt)
+                  #println(msg)
+                    DataFrame();
+                end
+
+            s_trial_travel_data = @where(s_data, :phase .== "TRAVEL", :trial_num .== t_idx);
+            travel_DF = try
+                
+                travel_model = loess(s_trial_travel_data.trial_time_sec, s_trial_travel_data.lag_z);
+                us_travel = range(extrema(s_trial_travel_data.trial_time_sec)...; step = 1)
+                vs_travel = Loess.predict(travel_model, us_travel);
+                DataFrame(trial_time_sec = us_travel, lag_smooth = vs_travel, trial_num = t_idx, sub = s_idx,
+                                        start_reward = s_trial_travel_data[1,:start_reward], 
+                                        travel_key_cond = s_trial_travel_data[1,:travel_key_cond],phase = "TRAVEL");
+            catch
+                DataFrame();
+            end
+            
+            sub_rr_DF = [sub_rr_DF; harvest_DF; travel_DF];
+        end # end loop over trials
+        #if (any(sub_rr_DF.lag_smooth .> 8) | any(sub_rr_DF.lag_smooth .< -10))
+         #   print("small_lag")
+        #end
+        #print(sub_rr_DF)
+        if (length(unique(sub_rr_DF.trial_num)) == length(unique(pdata_lt.trial_num))) & !(any(sub_rr_DF.lag_smooth .> 8) | any(sub_rr_DF.lag_smooth .< -8))
+            smooth_rr_DF = [smooth_rr_DF; sub_rr_DF];
+        end
+    end
+    smooth_rr_DF.trial_time_sec = ceil.(smooth_rr_DF.trial_time_sec);
+    return smooth_rr_DF
+end
+
+# plot group response rate over time...
+function plot_group_rr_over_time(pdata_lt)
+    
+    smooth_rr_DF = make_smooth_rr_DF(pdata_lt);
+    
+    smooth_rr_means = by(smooth_rr_DF, 
+        [:trial_time_sec, :start_reward, :travel_key_cond, :phase], 
+        :lag_smooth => mean,
+        :lag_smooth => sem);
+    smooth_rr_means.upper = smooth_rr_means.lag_smooth_mean + smooth_rr_means.lag_smooth_sem;
+    smooth_rr_means.lower = smooth_rr_means.lag_smooth_mean - smooth_rr_means.lag_smooth_sem;
+    smooth_rr_means.start_reward_cat = CategoricalArray(smooth_rr_means.start_reward);
+
+    p1 = plot(@where(smooth_rr_means, :phase .== "HARVEST",:travel_key_cond .== "EASY",
+            :trial_time_sec .> 20,:trial_time_sec .< 120), 
+        x = :trial_time_sec, y = :lag_smooth_mean, ymax = :upper, ymin = :lower,
+        color = :start_reward_cat, Geom.line(), Geom.ribbon(), Guide.title("Harvest Easy"),
+        Scale.color_discrete_hue(levels = [60,90,120]),
+        Guide.ylabel("Response Rate"), Guide.xlabel("Time (seconds)"), Guide.colorkey(title = "Start Reward"));
+        
+    p1a = plot(@where(smooth_rr_means, :phase .== "HARVEST",:travel_key_cond .== "HARD",
+            :trial_time_sec .> 20,:trial_time_sec .< 120), 
+        x = :trial_time_sec, y = :lag_smooth_mean, ymax = :upper, ymin = :lower,
+        color = :start_reward_cat, Geom.line(), Geom.ribbon(), 
+        Guide.title("Harvest Hard"), Scale.color_discrete_hue(levels = [60,90,120]),
+        Guide.ylabel("Response Rate"), Guide.xlabel("Time (seconds)"), Guide.colorkey(title = "Start Reward"));
+    
+
+    p2 = plot(@where(smooth_rr_means, :phase .== "TRAVEL", :travel_key_cond .== "EASY",
+            :trial_time_sec .> 20,:trial_time_sec .< 110), 
+        x = :trial_time_sec, y = :lag_smooth_mean, ymax = :upper, ymin = :lower,
+        color = :start_reward_cat, Geom.line(), Geom.ribbon(),
+        Guide.title("Travel Easy"),Scale.color_discrete_hue(levels = [60,90,120]),
+        Guide.ylabel("Response Rate"), Guide.xlabel("Time (seconds)"), Guide.colorkey(title = "Start Reward"));
+
+    
+    p3 = plot(@where(smooth_rr_means, :phase .== "TRAVEL", 
+            :travel_key_cond .== "HARD",:trial_time_sec .> 20,:trial_time_sec .< 120), 
+        x = :trial_time_sec, y = :lag_smooth_mean, ymax = :upper, ymin = :lower, color = :start_reward_cat,
+        Geom.line(),Geom.ribbon(), Guide.title("Travel Hard"),
+        Scale.color_discrete_hue(levels = [60,90,120]),
+        Guide.ylabel("Response Rate"), Guide.xlabel("Time (seconds)"), Guide.colorkey(title = "Start Reward"));
+
+    draw(PNG(20cm,30cm), title(gridstack([p1 p1a; p2 p3]), string("N Subj: ", length(unique(smooth_rr_DF.sub)))));
+end
+
+# average this over subjects..
+function make_smooth_thresh_DF(pdata)
+    round_exit_data = by(pdata, [:sub, :trial_num], df -> get_trial_exit_threshs(df));
+    round_exit_data.last_reward_sec = round_exit_data.last_reward_time./1000; # in units of 1000...
+    
+    smooth_thresh_DF = DataFrame();
+    for s_idx in unique(round_exit_data.sub)
+        sub_exit_DF = DataFrame();
+        #print(s_idx)
+        s_data = @where(round_exit_data, :sub .== s_idx);
+        s_data.last_reward_time = float.(s_data.last_reward_time);
+        s_data.last_reward = float.(s_data.last_reward);
+        for t_idx in unique(pdata.trial_num)
+
+            s_trial_data = @where(s_data,:trial_num .== t_idx);
+
+            exit_DF = try
+                exit_model_ext = LinearInterpolation(s_trial_data.last_reward_sec, s_trial_data.last_reward, extrapolation_bc=Interpolations.Flat()) # create interpolation function
+                #exit_model_ext = extrapolate(interpolate(s_trial_data.last_reward_sec, s_trial_data.last_reward, scheme)
+                #exit_model_ext = extrapolate(exit_model, Flat())
+                #exit_model = loess(s_trial_data.last_reward_sec, s_trial_data.last_reward,span=.98);
+                #us_exit = range(extrema(s_trial_data.last_reward_sec)...; step = 1)
+                us_exit = range(extrema(round_exit_data.last_reward_sec)...; step = 1)
+                vs_exit = exit_model_ext(us_exit);#Loess.predict(exit_model, us_exit);
+                DataFrame(trial_time_sec = us_exit, thresh_smooth = vs_exit, trial_num = t_idx, sub = s_idx,
+                                        start_reward = s_trial_data[1,:start_reward], 
+                                        travel_key_cond = s_trial_data[1,:travel_key_cond]);
+                catch e
+                # print the error for 6...
+                bt = backtrace()
+                  msg = sprint(showerror, e, bt)
+                 # println(msg)
+                DataFrame()
+            end
+            #print(unique(exit_DF.trial_num))
+            
+           # if !(nrow(exit_DF) > 0)
+            #    print("fail")
+            #end
+            # throw out subjects for which we missed some
+            sub_exit_DF = [sub_exit_DF; exit_DF];
+            #print(sub_exit_DF)
+        end
+        if (nrow(sub_exit_DF) > 1)
+            if(length(unique(sub_exit_DF.trial_num)) == length(unique(pdata.trial_num)))
+                smooth_thresh_DF = [smooth_thresh_DF; sub_exit_DF];
+            else
+               println(string(s_idx, ": fail some"))
+            end
+        else
+            println(string(s_idx, ": fail all"))
+        end
+    end
+    return smooth_thresh_DF;
+end
+
+# differences between these are present from the first trial basically...
+function plot_group_thresh_over_time(pdata)
+    
+    smooth_thresh_DF = make_smooth_thresh_DF(pdata);
+    smooth_thresh_DF.trial_time_sec = ceil.(smooth_thresh_DF.trial_time_sec);
+
+    # get the group mean over time...
+    # plot means and sems
+    smooth_thresh_means = by(smooth_thresh_DF, 
+        [:trial_time_sec, :start_reward, :travel_key_cond], 
+        :thresh_smooth => mean,
+        :thresh_smooth => sem);
+    smooth_thresh_means.upper = smooth_thresh_means.thresh_smooth_mean + smooth_thresh_means.thresh_smooth_sem;
+    smooth_thresh_means.lower = smooth_thresh_means.thresh_smooth_mean - smooth_thresh_means.thresh_smooth_sem;
+
+    p = plot(@where(smooth_thresh_means, :trial_time_sec .> 1 , :trial_time_sec .< 130), x = :trial_time_sec, y = :thresh_smooth_mean, 
+        ymin =:lower, ymax =:upper,
+        xgroup = :start_reward, 
+        color = :travel_key_cond,
+        Geom.subplot_grid(
+            Geom.line(),
+            Geom.ribbon()
+            ), 
+        Guide.ylabel("Exit Threshold"),
+        Guide.xlabel("Time (sec)"),
+        Scale.xgroup(levels = [60,90,120]), 
+        Scale.color_discrete_hue(levels = ["EASY", "HARD"]),
+        Guide.colorkey(title = "Travel Cost"),
+        Guide.title(string("N Subj: ", length(unique(smooth_thresh_DF.sub)))),
+        Theme(panel_fill=colorant"white"));
+    draw(PNG(),p)
+end
+
+
+
+
+
+
