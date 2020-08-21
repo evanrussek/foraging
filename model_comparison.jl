@@ -22,6 +22,7 @@ using Fontconfig
 @everywhere include("simulation_functions.jl")
 @everywhere include("lik_funs.jl")
 
+
 param_dict = Dict();
 
 # spread parameters# lag beta...
@@ -155,7 +156,7 @@ m1_res["iaic"] = iaic_m1;
 @save("model_res/full_m1.jld", m1_res)
 
 
-function make_recov_plots(x_m1, param_names, sim_func; n_rep = 2)
+function make_recov_plots(x_, param_names, sim_func; n_rep = 2)
 	# re-simulate this model...
 	group_rec_data = DataFrame();
 	for rep = 1:n_rep
@@ -306,7 +307,7 @@ forage_lik_learn_mult_nochoiceR(betas,pdata_clean)
 
 # get the bic...
 ibic_m4 = ibic(x_m4,l_m4,h_m4,betas_m4,sigma_m4,size(pdata_clean,1))
-iaic_m3 = iaic(x_m3,l_m3,h_m3,betas_m3,sigma_m3);
+iaic_m4 = iaic(x_m4,l_m4,h_m4,betas_m4,sigma_m4);
 
 
 m4_res = Dict();

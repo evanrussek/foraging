@@ -313,7 +313,7 @@ function prep_subj_data(data_in)
     s_data = DataFrame(data_in);#copy(data_in);
     s_data[!,:lag_scale] = copy(s_data[!,:lag]); # is this wrong?
     s_data[!,:lag] = s_data[!,:lag_scale] ./ 100;
-    
+
     # add trial time elapsed...
     s_data[!,:trial_time_elapsed] = zeros(length(s_data[!,:time_elapsed]));
     for t_idx in unique(s_data.trial_num)
@@ -325,22 +325,22 @@ function prep_subj_data(data_in)
     s_data[ismissing.(s_data[!,:exit]),:exit] .= 1;
     s_data[!,:choice] = s_data[!,:exit] .+ 1;
     s_data[!,:choice] = convert(Array{Int,1}, s_data[!,:choice]);
-    
+
     # make a column that splits by press type
     s_data[!,:button] .= string();
     s_data[s_data[!,:phase] .== "HARVEST", :button] .= "HARVEST";
     s_data[(s_data[!,:phase] .== "TRAVEL") .& (s_data[!,:travel_key_cond] .== "HARD"), :button] .= "TRAVEL_HARD";
     s_data[(s_data[!,:phase] .== "TRAVEL") .& (s_data[!,:travel_key_cond] .== "EASY"), :button] .= "TRAVEL_EASY";
-    # this uses a split of 3, but changes by button press type... 
-    button_lag_thresh_df = by(s_data, :button, df -> DataFrame(upper_lag_thresh = median(df.lag) + 3*mad(df.lag), 
-            lower_lag_thresh = median(df.lag) - 3*mad(df.lag))) 
+    # this uses a split of 3, but changes by button press type...
+    button_lag_thresh_df = by(s_data, :button, df -> DataFrame(upper_lag_thresh2 = median(df.lag) + 3*mad(df.lag),
+            lower_lag_thresh2 = median(df.lag) - 3*mad(df.lag)))
     s_data = join(s_data, button_lag_thresh_df, on = :button, kind = :left);
     s_data.trial_time_sec = s_data.trial_time_elapsed./1000;
-    s_data.upper_lag_thresh2 = median(s_data.lag) + 4*mad(s_data.lag);
-    s_data.lower_lag_thresh2 = median(s_data.lag) - 4*mad(s_data.lag); # 4 sds...
+    s_data.upper_lag_thresh = median(s_data.lag) + 4*mad(s_data.lag);
+    s_data.lower_lag_thresh = median(s_data.lag) - 4*mad(s_data.lag); # 4 sds...
 
     sub_df = s_data[!, [:round, :trial_num, :lag, :lag_scale, :choice, :phase, :start_reward,
-            :reward_obs, :travel_key_cond, :subjectID, :reward_true, :trial_time_elapsed, :button, 
+            :reward_obs, :travel_key_cond, :subjectID, :reward_true, :trial_time_elapsed, :button,
             :upper_lag_thresh, :lower_lag_thresh, :trial_time_sec, :upper_lag_thresh2, :lower_lag_thresh2]];
 
     return sub_df
@@ -354,7 +354,7 @@ function make_smooth_rr_DF(pdata)
     for s_idx in unique(pdata_lt.sub)
         print(s_idx)
         sub_rr_DF = DataFrame();
-        
+
         s_data = @where(pdata_lt, :sub .== s_idx);
         s_data.lag_z = zscore(s_data.log_lag);
         for t_idx in unique(pdata_lt.trial_num)
@@ -363,9 +363,9 @@ function make_smooth_rr_DF(pdata)
                 harvest_model = loess(s_trial_harvest_data.trial_time_sec, s_trial_harvest_data.lag_z);
                 us_harvest = range(extrema(s_trial_harvest_data.trial_time_sec)...; step = 1)
                 vs_harvest = Loess.predict(harvest_model, us_harvest);
-                
+
                 DataFrame(trial_time_sec = us_harvest, lag_smooth = vs_harvest, trial_num = t_idx, sub = s_idx,
-                                        start_reward = s_trial_harvest_data[1,:start_reward], 
+                                        start_reward = s_trial_harvest_data[1,:start_reward],
                                         travel_key_cond = s_trial_harvest_data[1,:travel_key_cond],phase = "HARVEST");
                 catch e
                   bt = backtrace()
@@ -376,17 +376,17 @@ function make_smooth_rr_DF(pdata)
 
             s_trial_travel_data = @where(s_data, :phase .== "TRAVEL", :trial_num .== t_idx);
             travel_DF = try
-                
+
                 travel_model = loess(s_trial_travel_data.trial_time_sec, s_trial_travel_data.lag_z);
                 us_travel = range(extrema(s_trial_travel_data.trial_time_sec)...; step = 1)
                 vs_travel = Loess.predict(travel_model, us_travel);
                 DataFrame(trial_time_sec = us_travel, lag_smooth = vs_travel, trial_num = t_idx, sub = s_idx,
-                                        start_reward = s_trial_travel_data[1,:start_reward], 
+                                        start_reward = s_trial_travel_data[1,:start_reward],
                                         travel_key_cond = s_trial_travel_data[1,:travel_key_cond],phase = "TRAVEL");
             catch
                 DataFrame();
             end
-            
+
             sub_rr_DF = [sub_rr_DF; harvest_DF; travel_DF];
         end # end loop over trials
         #if (any(sub_rr_DF.lag_smooth .> 8) | any(sub_rr_DF.lag_smooth .< -10))
@@ -403,11 +403,11 @@ end
 
 # plot group response rate over time...
 function plot_group_rr_over_time(pdata_lt)
-    
+
     smooth_rr_DF = make_smooth_rr_DF(pdata_lt);
-    
-    smooth_rr_means = by(smooth_rr_DF, 
-        [:trial_time_sec, :start_reward, :travel_key_cond, :phase], 
+
+    smooth_rr_means = by(smooth_rr_DF,
+        [:trial_time_sec, :start_reward, :travel_key_cond, :phase],
         :lag_smooth => mean,
         :lag_smooth => sem);
     smooth_rr_means.upper = smooth_rr_means.lag_smooth_mean + smooth_rr_means.lag_smooth_sem;
@@ -415,30 +415,30 @@ function plot_group_rr_over_time(pdata_lt)
     smooth_rr_means.start_reward_cat = CategoricalArray(smooth_rr_means.start_reward);
 
     p1 = plot(@where(smooth_rr_means, :phase .== "HARVEST",:travel_key_cond .== "EASY",
-            :trial_time_sec .> 20,:trial_time_sec .< 120), 
+            :trial_time_sec .> 20,:trial_time_sec .< 120),
         x = :trial_time_sec, y = :lag_smooth_mean, ymax = :upper, ymin = :lower,
         color = :start_reward_cat, Geom.line(), Geom.ribbon(), Guide.title("Harvest Easy"),
         Scale.color_discrete_hue(levels = [60,90,120]),
         Guide.ylabel("Response Rate"), Guide.xlabel("Time (seconds)"), Guide.colorkey(title = "Start Reward"));
-        
+
     p1a = plot(@where(smooth_rr_means, :phase .== "HARVEST",:travel_key_cond .== "HARD",
-            :trial_time_sec .> 20,:trial_time_sec .< 120), 
+            :trial_time_sec .> 20,:trial_time_sec .< 120),
         x = :trial_time_sec, y = :lag_smooth_mean, ymax = :upper, ymin = :lower,
-        color = :start_reward_cat, Geom.line(), Geom.ribbon(), 
+        color = :start_reward_cat, Geom.line(), Geom.ribbon(),
         Guide.title("Harvest Hard"), Scale.color_discrete_hue(levels = [60,90,120]),
         Guide.ylabel("Response Rate"), Guide.xlabel("Time (seconds)"), Guide.colorkey(title = "Start Reward"));
-    
+
 
     p2 = plot(@where(smooth_rr_means, :phase .== "TRAVEL", :travel_key_cond .== "EASY",
-            :trial_time_sec .> 20,:trial_time_sec .< 110), 
+            :trial_time_sec .> 20,:trial_time_sec .< 110),
         x = :trial_time_sec, y = :lag_smooth_mean, ymax = :upper, ymin = :lower,
         color = :start_reward_cat, Geom.line(), Geom.ribbon(),
         Guide.title("Travel Easy"),Scale.color_discrete_hue(levels = [60,90,120]),
         Guide.ylabel("Response Rate"), Guide.xlabel("Time (seconds)"), Guide.colorkey(title = "Start Reward"));
 
-    
-    p3 = plot(@where(smooth_rr_means, :phase .== "TRAVEL", 
-            :travel_key_cond .== "HARD",:trial_time_sec .> 20,:trial_time_sec .< 120), 
+
+    p3 = plot(@where(smooth_rr_means, :phase .== "TRAVEL",
+            :travel_key_cond .== "HARD",:trial_time_sec .> 20,:trial_time_sec .< 120),
         x = :trial_time_sec, y = :lag_smooth_mean, ymax = :upper, ymin = :lower, color = :start_reward_cat,
         Geom.line(),Geom.ribbon(), Guide.title("Travel Hard"),
         Scale.color_discrete_hue(levels = [60,90,120]),
@@ -451,7 +451,7 @@ end
 function make_smooth_thresh_DF(pdata)
     round_exit_data = by(pdata, [:sub, :trial_num], df -> get_trial_exit_threshs(df));
     round_exit_data.last_reward_sec = round_exit_data.last_reward_time./1000; # in units of 1000...
-    
+
     smooth_thresh_DF = DataFrame();
     for s_idx in unique(round_exit_data.sub)
         sub_exit_DF = DataFrame();
@@ -472,7 +472,7 @@ function make_smooth_thresh_DF(pdata)
                 us_exit = range(extrema(round_exit_data.last_reward_sec)...; step = 1)
                 vs_exit = exit_model_ext(us_exit);#Loess.predict(exit_model, us_exit);
                 DataFrame(trial_time_sec = us_exit, thresh_smooth = vs_exit, trial_num = t_idx, sub = s_idx,
-                                        start_reward = s_trial_data[1,:start_reward], 
+                                        start_reward = s_trial_data[1,:start_reward],
                                         travel_key_cond = s_trial_data[1,:travel_key_cond]);
                 catch e
                 # print the error for 6...
@@ -482,7 +482,7 @@ function make_smooth_thresh_DF(pdata)
                 DataFrame()
             end
             #print(unique(exit_DF.trial_num))
-            
+
            # if !(nrow(exit_DF) > 0)
             #    print("fail")
             #end
@@ -504,40 +504,35 @@ function make_smooth_thresh_DF(pdata)
 end
 
 # differences between these are present from the first trial basically...
-function plot_group_thresh_over_time(pdata)
-    
+function plot_group_thresh_over_time(pdata; bounds = [20, 60])
+
     smooth_thresh_DF = make_smooth_thresh_DF(pdata);
     smooth_thresh_DF.trial_time_sec = ceil.(smooth_thresh_DF.trial_time_sec);
 
     # get the group mean over time...
     # plot means and sems
-    smooth_thresh_means = by(smooth_thresh_DF, 
-        [:trial_time_sec, :start_reward, :travel_key_cond], 
+    smooth_thresh_means = by(smooth_thresh_DF,
+        [:trial_time_sec, :start_reward, :travel_key_cond],
         :thresh_smooth => mean,
         :thresh_smooth => sem);
     smooth_thresh_means.upper = smooth_thresh_means.thresh_smooth_mean + smooth_thresh_means.thresh_smooth_sem;
     smooth_thresh_means.lower = smooth_thresh_means.thresh_smooth_mean - smooth_thresh_means.thresh_smooth_sem;
 
-    p = plot(@where(smooth_thresh_means, :trial_time_sec .> 1 , :trial_time_sec .< 130), x = :trial_time_sec, y = :thresh_smooth_mean, 
+    p = plot(@where(smooth_thresh_means, :trial_time_sec .> 1 , :trial_time_sec .< 130), x = :trial_time_sec, y = :thresh_smooth_mean,
         ymin =:lower, ymax =:upper,
-        xgroup = :start_reward, 
+        xgroup = :start_reward,
         color = :travel_key_cond,
         Geom.subplot_grid(
             Geom.line(),
-            Geom.ribbon()
-            ), 
+            Geom.ribbon(),
+            Coord.Cartesian(ymin = bounds[1], ymax = bounds[2])
+            ),
         Guide.ylabel("Exit Threshold"),
         Guide.xlabel("Time (sec)"),
-        Scale.xgroup(levels = [60,90,120]), 
+        Scale.xgroup(levels = [60,90,120]),
         Scale.color_discrete_hue(levels = ["EASY", "HARD"]),
         Guide.colorkey(title = "Travel Cost"),
         Guide.title(string("N Subj: ", length(unique(smooth_thresh_DF.sub)))),
         Theme(panel_fill=colorant"white"));
     draw(PNG(),p)
 end
-
-
-
-
-
-

@@ -738,7 +738,7 @@ function sim_forage_learn_singleR_max(param_dict)
 
     harvest_cost_choice = harvest_cost_lag;#param_dict["harvest_cost_choice"]*10;
     travel_cost_easy_choice = travel_cost_easy_lag;#param_dict["travel_cost_easy_choice"]*10;
-    travel_cost_hard_choice = travel_cost_hard_choice;#param_dict["travel_cost_hard_choice"]*10;
+    travel_cost_hard_choice = travel_cost_hard_lag;#param_dict["travel_cost_hard_choice"]*10;
     harvest_bias = param_dict["harvest_bias"];
 
     # constants...
